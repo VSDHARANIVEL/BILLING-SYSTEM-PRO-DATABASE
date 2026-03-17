@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Billing System Pro</title>
+  <link rel="stylesheet" href="/static/css/style.css"/>
+</head>
+<body>
+
+<!-- ═══════════════ SIDEBAR ═══════════════ -->
+<aside class="sidebar">
+  <div class="sb-logo">
+    <div class="sb-icon">BS</div>
+    <div>
+      <div class="sb-title">Billing System Pro</div>
+    </div>
+  </div>
+
+  <nav class="sb-nav">
+    <div class="ni active" data-page="bill"       onclick="navTo('bill')">
+      <span class="ni-ic">🧾</span> New Bill
+    </div>
+    <div class="ni" data-page="stock"     onclick="navTo('stock')">
+      <span class="ni-ic">📦</span> Stock Manager
+    </div>
+    <div class="ni" data-page="customer"  onclick="navTo('customer')">
+      <span class="ni-ic">👤</span> Customer Lookup
+    </div>
+    <div class="ni" data-page="incentives"onclick="navTo('incentives')">
+      <span class="ni-ic">🏆</span> Incentives
+    </div>
+    <div class="ni" data-page="reports"   onclick="navTo('reports')">
+      <span class="ni-ic">📊</span> Reports
+    </div>
+  </nav>
+
+  <div class="sb-clock">
+    <div class="cl-date" id="clDate"></div>
+    <div class="cl-time" id="clTime"></div>
+  </div>
+</aside>
+
+<!-- ═══════════════ MAIN ═══════════════════ -->
+<div class="main">
+
+  <!-- Top bar -->
+  <div class="topbar">
+    <span class="topbar-title" id="topTitle">Create New Bill</span>
+    <span class="topbar-right" id="topRight">Billing System Pro</span>
+  </div>
+
+  <div class="content">
+
+    <!-- ──────────────────── NEW BILL ──────────────────── -->
+    <div class="page active" id="page-bill">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
+        <div class="sec-title" style="margin-bottom:0">Create New Bill</div>
+        <div class="bill-id-badge">Bill # <span id="billNo">—</span></div>
+      </div>
+
+      <!-- Customer Info -->
+      <div class="card">
+        <div class="card-title">Customer Information</div>
+        <div class="form-row">
+          <div class="form-group" style="flex:2;min-width:160px">
+            <label>Customer Name *</label>
+            <input id="bCN" type="text" placeholder="Enter name"
+                   onkeydown="ek(event,'bCP')"/>
+          </div>
+          <div class="form-group" style="flex:2;min-width:140px">
+            <label>Phone Number *</label>
+            <input id="bCP" type="tel" placeholder="Enter phone"
+                   maxlength="10" onkeydown="ek(event,'bEmail')"/>
+          </div>
+          <div class="form-group" style="flex:2;min-width:160px">
+            <label>Email</label>
+            <input id="bEmail" type="email" placeholder="Enter email"
+                   onkeydown="ek(event,'bAddr')"/>
+          </div>
+          <div class="form-group" style="flex:2;min-width:160px">
+            <label>Address</label>
+            <input id="bAddr" type="text" placeholder="Enter address"
+                   onkeydown="ek(event,'bCode')"/>
+          </div>
+        </div>
+      </div>
+
+      <!-- Add Items -->
+      <div class="card">
+        <div class="card-title">Add Items</div>
+        <div class="form-row">
+          <div class="form-group" style="max-width:160px">
+            <label>Stock Code (3 digits)</label>
+            <input id="bCode" type="text" maxlength="3" placeholder="101"
+                   oninput="lookupProduct()" onkeydown="ek(event,'bQty')"/>
+          </div>
+          <div class="form-group" style="flex:2">
+            <label>Product Name</label>
+            <input id="bPN" type="text" readonly placeholder="Auto-filled"/>
+          </div>
+          <div class="form-group">
+            <label>Price (₹)</label>
+            <input id="bPr" type="text" readonly placeholder="Auto"/>
+          </div>
+          <div class="form-group" style="max-width:90px">
+            <label>Qty</label>
+            <input id="bQty" type="number" value="1" min="1"
+                   onkeydown="if(event.key==='Enter') addItem()"/>
+          </div>
+          <div class="form-group" style="align-self:flex-end;max-width:120px">
+            <button class="btn btn-primary" onclick="addItem()">➕ Add Item</button>
+          </div>
+        </div>
+        <div class="lookup-status" id="lstatus"></div>
+      </div>
+
+      <!-- Bill Items Table -->
+      <div class="card">
+        <div class="card-title">Bill Items</div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>#</th><th>Item</th><th>Qty</th>
+                <th>Price</th><th>Discount</th><th>Total</th><th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="billTbody">
+              <tr><td colspan="7" class="empty-td">No items added</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Total box -->
+        <div class="bill-total-box mt-16">
+          <div class="bt-row"><span>Subtotal:</span><span id="bSubtotal">₹0.00</span></div>
+          <div class="bt-row bt-grand">
+            <span>Total Amount:</span>
+            <span id="bTotal">₹0.00</span>
+          </div>
+          <hr class="sep"/>
+          <div class="form-row mt-12">
+            <div class="form-group">
+              <label>Worker Number</label>
+              <div class="input-wrap">
+                <input id="bWorker" type="text" placeholder="Enter worker number (e.g., 01)"
+                       oninput="previewWorker()" onkeydown="if(event.key==='Enter')submitBill()"/>
+                <span class="input-badge" id="workerBadge"></span>
+              </div>
+            </div>
+            <div class="form-group" style="max-width:180px;align-self:flex-end">
+              <input id="bWorkerName" type="text" readonly placeholder="Worker name auto-filled"/>
+            </div>
+          </div>
+          <div class="bill-actions">
+            <button class="btn btn-danger btn-sm" onclick="clearBill()">🗑 Clear Bill</button>
+            <button class="btn btn-success btn-block" onclick="submitBill()"
+                    style="flex:1;max-width:220px">✅ Generate Bill</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ──────────────────── STOCK MANAGER ──────────────────── -->
+    <div class="page" id="page-stock">
+      <div class="sec-title">Stock Manager</div>
+
+      <div class="card">
+        <div class="card-title">Add New Product</div>
+        <div class="form-row">
+          <div class="form-group" style="max-width:160px">
+            <label>Product Code (3 digits)</label>
+            <input id="pCode" type="text" maxlength="3" placeholder="e.g. 100"
+                   onkeydown="ek(event,'pName')"/>
+          </div>
+          <div class="form-group" style="flex:2">
+            <label>Product Name</label>
+            <input id="pName" type="text" placeholder="Shirt, Pant..."
+                   onkeydown="ek(event,'pPrice')"/>
+          </div>
+          <div class="form-group">
+            <label>Price (₹)</label>
+            <input id="pPrice" type="number" placeholder="100" min="0"
+                   onkeydown="ek(event,'pStock')"/>
+          </div>
+          <div class="form-group">
+            <label>Stock Quantity</label>
+            <input id="pStock" type="number" placeholder="100" min="0"
+                   onkeydown="if(event.key==='Enter') addProduct()"/>
+          </div>
+          <div class="form-group" style="align-self:flex-end;max-width:150px">
+            <button class="btn btn-primary" onclick="addProduct()">📦 Add Product</button>
+          </div>
+        </div>
+        <div class="msg-box" id="pMsg"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Current Stock</div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Code</th><th>Product Name</th><th>Price (₹)</th>
+                <th>Stock</th><th>Total Value</th><th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="stockTbody">
+              <tr><td colspan="6" class="empty-td">Loading...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ──────────────────── CUSTOMER LOOKUP ──────────────────── -->
+    <div class="page" id="page-customer">
+      <div class="sec-title">Customer Lookup</div>
+
+      <div class="card">
+        <div class="card-title">Search by Phone Number</div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Phone Number</label>
+            <input id="cPhone" type="tel" placeholder="Enter 10-digit phone number"
+                   maxlength="10" onkeydown="if(event.key==='Enter') lookupCustomer()"/>
+          </div>
+          <div class="form-group" style="align-self:flex-end;max-width:130px">
+            <button class="btn btn-primary" onclick="lookupCustomer()">🔍 Search</button>
+          </div>
+        </div>
+        <div id="custResultBox" class="hidden"></div>
+      </div>
+    </div>
+
+    <!-- ──────────────────── INCENTIVES ──────────────────── -->
+    <div class="page" id="page-incentives">
+      <div class="sec-title">Worker Incentives <small style="font-size:13px;color:#888;font-weight:400">(₹1 per piece)</small></div>
+
+      <!-- Supervisor login -->
+      <div class="card sup-card">
+        <div class="card-title">🔐 Supervisor Access</div>
+
+        <div id="supLoginBlock">
+          <div class="form-row">
+            <div class="form-group">
+              <label>Username</label>
+              <input id="supU" type="text" placeholder="SUPERVISOR"
+                     onkeydown="ek(event,'supP')"/>
+            </div>
+            <div class="form-group">
+              <label>Password</label>
+              <input id="supP" type="password" placeholder="Password"
+                     onkeydown="if(event.key==='Enter') supervisorLogin()"/>
+            </div>
+            <div class="form-group" style="align-self:flex-end;max-width:190px">
+              <button class="btn btn-warning" onclick="supervisorLogin()">🔐 Supervisor Login</button>
+            </div>
+          </div>
+          <div class="msg-box" id="supMsg"></div>
+        </div>
+
+        <div id="supActiveBlock" class="hidden">
+          <div class="sup-controls">
+            <span class="sup-active-badge">✅ Supervisor: <span id="supWho"></span></span>
+            <button class="btn btn-danger btn-sm" onclick="clearIncentives()">
+              🗑 Clear All Incentives (Month End)
+            </button>
+            <button class="btn btn-outline btn-sm" onclick="supervisorLogout()">Logout</button>
+          </div>
+          <hr class="sep"/>
+          <div style="font-size:12.5px;font-weight:600;color:#555;margin-bottom:12px;">
+            ✏️ Edit Worker Incentive Manually
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Worker Number</label>
+              <input id="supEW" type="text" placeholder="e.g. 01"
+                     onkeydown="ek(event,'supEA')"/>
+            </div>
+            <div class="form-group">
+              <label>Adjust Pieces (+ to add, − to subtract)</label>
+              <input id="supEA" type="number" placeholder="e.g. 6 or -3"
+                     onkeydown="ek(event,'supEN')"/>
+            </div>
+            <div class="form-group">
+              <label>Note (optional)</label>
+              <input id="supEN" type="text" placeholder="Reason..."
+                     onkeydown="if(event.key==='Enter') supervisorEditIncentive()"/>
+            </div>
+            <div class="form-group" style="align-self:flex-end;max-width:150px">
+              <button class="btn btn-primary" onclick="supervisorEditIncentive()">✏️ Apply</button>
+            </div>
+          </div>
+          <div class="msg-box" id="supEditMsg"></div>
+        </div>
+      </div>
+
+      <!-- Add worker -->
+      <div class="card">
+        <div class="card-title">Add New Worker</div>
+        <div class="form-row">
+          <div class="form-group" style="max-width:200px">
+            <label>Worker Number</label>
+            <input id="wNum" type="text" placeholder="e.g. 01"
+                   onkeydown="ek(event,'wName')"/>
+          </div>
+          <div class="form-group">
+            <label>Worker Name</label>
+            <input id="wName" type="text" placeholder="e.g. ABC"
+                   onkeydown="if(event.key==='Enter') addWorker()"/>
+          </div>
+          <div class="form-group" style="align-self:flex-end;max-width:150px">
+            <button class="btn btn-primary" onclick="addWorker()">➕ Add Worker</button>
+          </div>
+        </div>
+        <div class="msg-box" id="wMsg"></div>
+      </div>
+
+      <!-- Performance table -->
+      <div class="card">
+        <div class="card-title">Worker Performance</div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Number</th><th>Name</th><th>Pieces Sold</th>
+                <th>Bills</th><th>Incentive (₹)</th><th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="incTbody">
+              <tr><td colspan="6" class="empty-td">Loading...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ──────────────────── REPORTS ──────────────────── -->
+    <div class="page" id="page-reports">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
+        <div class="sec-title" style="margin-bottom:0">Reports &amp; Analytics</div>
+        <button class="btn btn-outline btn-sm" onclick="loadReports()">🔄 Refresh</button>
+      </div>
+
+      <div class="stats-grid">
+        <div class="stat-card stat-bl">
+          <div class="stat-ic">💰</div>
+          <div><div class="stat-label">Total Sales</div><div class="stat-value" id="rSales">—</div></div>
+        </div>
+        <div class="stat-card stat-gn">
+          <div class="stat-ic">🧾</div>
+          <div><div class="stat-label">Total Bills</div><div class="stat-value" id="rBills">—</div></div>
+        </div>
+        <div class="stat-card stat-am">
+          <div class="stat-ic">👥</div>
+          <div><div class="stat-label">Customers</div><div class="stat-value" id="rCusts">—</div></div>
+        </div>
+        <div class="stat-card stat-cy">
+          <div class="stat-ic">🏆</div>
+          <div><div class="stat-label">Incentives</div><div class="stat-value" id="rInc">—</div></div>
+        </div>
+      </div>
+
+      <div class="rep-grid">
+        <div class="card">
+          <div class="card-title">Recent Bills</div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Bill#</th><th>Date</th><th>Customer</th>
+                  <th>Phone</th><th>Amount</th><th>Worker</th>
+                </tr>
+              </thead>
+              <tbody id="repBillsTb"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title">Top Products</div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>Product</th><th>Units Sold</th><th>Revenue</th></tr>
+              </thead>
+              <tbody id="repProdTb"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /content -->
+</div><!-- /main -->
+
+<!-- ═════════════ RECEIPT MODAL ═════════════ -->
+<div class="overlay hidden" id="receiptOverlay" onclick="handleOverlayClick(event)">
+  <div class="receipt-modal" id="receiptModal">
+    <div class="r-head">
+      <h2>Billing System Pro</h2>
+      <p id="rDate"></p>
+      <p>Bill No: <strong id="rNo"></strong></p>
+    </div>
+    <div class="r-cust">
+      <p>Customer: <strong id="rCust"></strong></p>
+      <p>Phone: <strong id="rPhone"></strong></p>
+      <p>Worker: <strong id="rWorker"></strong></p>
+    </div>
+    <div class="r-items" id="rItemsContainer"></div>
+    <div class="r-total">
+      <span>TOTAL</span>
+      <strong id="rTotal"></strong>
+    </div>
+    <div class="r-footer">Thank you for your purchase!</div>
+    <div class="r-actions">
+      <button class="btn btn-primary" onclick="window.print()">🖨 Print</button>
+      <button class="btn btn-outline" onclick="closeReceipt()">✕ Close</button>
+    </div>
+  </div>
+</div>
+  
+<!-- ═════════════ TOASTS ═════════════ -->
+<div id="toast-container"></div>
+<!-- JS -->
+<script src="/static/js/app.js"></script>
+</body>
+</html>
