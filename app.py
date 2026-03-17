@@ -1,28 +1,37 @@
-import os, hashlib, psycopg2, psycopg2.extras
+import os, hashlib
 from flask import Flask, request, jsonify, session, Response
 from flask_cors import CORS
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("SECRET_KEY", "billpro_secret_2024_xk9")
+app.secret_key = os.environ.get("SECRET_KEY", "billpro_secret_key_2024")
 CORS(app, supports_credentials=True)
 
 # ══════════════════════════════════════════════════════════
-#  DATABASE  —  PostgreSQL only (works on Render)
+#  DATABASE SETUP
 # ══════════════════════════════════════════════════════════
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
 
-if not DATABASE_URL:
-    raise RuntimeError(
-        "\n\n❌  DATABASE_URL environment variable is not set!\n"
-        "   On Render: create a PostgreSQL database and add\n"
-        "   DATABASE_URL = <Internal Database URL>\n"
-        "   in your web service Environment settings.\n"
-    )
-
-# Render gives URLs starting with 'postgres://' but psycopg2 needs 'postgresql://'
+# Render gives 'postgres://' but psycopg2 needs 'postgresql://'
 if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+
+DB_READY = False
+DB_ERROR = ""
+
+try:
+    import psycopg2
+    import psycopg2.extras
+    if not DATABASE_URL:
+        raise Exception("DATABASE_URL environment variable is not set on Render.")
+    # Test the connection immediately
+    test_conn = psycopg2.connect(DATABASE_URL)
+    test_conn.close()
+    DB_READY = True
+except ImportError:
+    DB_ERROR = "psycopg2 not installed. Check requirements.txt has psycopg2-binary."
+except Exception as e:
+    DB_ERROR = str(e)
 
 
 def get_db():
@@ -34,7 +43,7 @@ def qone(sql, params=()):
     conn = get_db()
     cur  = conn.cursor()
     cur.execute(sql, params)
-    row = cur.fetchone()
+    row  = cur.fetchone()
     conn.close()
     return dict(row) if row else None
 
@@ -56,29 +65,17 @@ def run(sql, params=()):
     conn.close()
 
 
-def run_returning(sql, params=()):
-    """Run INSERT ... RETURNING id and return the value."""
-    conn = get_db()
-    cur  = conn.cursor()
-    cur.execute(sql, params)
-    row = cur.fetchone()
-    conn.commit()
-    conn.close()
-    return dict(row) if row else {}
-
-
 def hpw(pw):
     return hashlib.sha256(pw.strip().encode()).hexdigest()
 
 
 # ══════════════════════════════════════════════════════════
-#  INIT DATABASE TABLES
+#  INIT TABLES
 # ══════════════════════════════════════════════════════════
 
 def init_db():
     conn = get_db()
     cur  = conn.cursor()
-
     cur.execute("""
         CREATE TABLE IF NOT EXISTS products (
             code  TEXT PRIMARY KEY,
@@ -87,7 +84,6 @@ def init_db():
             stock INTEGER NOT NULL DEFAULT 0
         )
     """)
-
     cur.execute("""
         CREATE TABLE IF NOT EXISTS workers (
             number  TEXT PRIMARY KEY,
@@ -95,7 +91,6 @@ def init_db():
             created TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
-
     cur.execute("""
         CREATE TABLE IF NOT EXISTS bills (
             id             SERIAL PRIMARY KEY,
@@ -110,7 +105,6 @@ def init_db():
             total_pieces   INTEGER DEFAULT 0
         )
     """)
-
     cur.execute("""
         CREATE TABLE IF NOT EXISTS bill_items (
             id           SERIAL PRIMARY KEY,
@@ -122,7 +116,6 @@ def init_db():
             subtotal     NUMERIC
         )
     """)
-
     cur.execute("""
         CREATE TABLE IF NOT EXISTS adjustments (
             id            SERIAL PRIMARY KEY,
@@ -132,7 +125,6 @@ def init_db():
             created       TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
-
     cur.execute("""
         CREATE TABLE IF NOT EXISTS supervisor (
             id       SERIAL PRIMARY KEY,
@@ -140,24 +132,26 @@ def init_db():
             password TEXT NOT NULL
         )
     """)
-
-    # Default supervisor
     cur.execute("SELECT COUNT(*) AS n FROM supervisor")
     if cur.fetchone()['n'] == 0:
         cur.execute(
-            "INSERT INTO supervisor (username, password) VALUES (%s, %s)",
+            "INSERT INTO supervisor(username,password) VALUES(%s,%s)",
             ('admin', hpw('admin123'))
         )
-
     conn.commit()
     conn.close()
 
 
-try:
-    init_db()
-    print("✅  Database initialised successfully.")
-except Exception as e:
-    print(f"❌  Database init failed: {e}")
+if DB_READY:
+    try:
+        init_db()
+        print("✅ Database tables ready.")
+    except Exception as e:
+        DB_READY = False
+        DB_ERROR = "Tables init failed: " + str(e)
+        print("❌ " + DB_ERROR)
+else:
+    print("❌ DB not ready: " + DB_ERROR)
 
 
 # ══════════════════════════════════════════════════════════
@@ -188,8 +182,15 @@ def jdata():
     return d if isinstance(d, dict) else {}
 
 
+def db_check():
+    """Return error response if DB is not ready."""
+    if not DB_READY:
+        return jerr("Database not connected. Error: " + DB_ERROR, 503)
+    return None
+
+
 # ══════════════════════════════════════════════════════════
-#  FRONTEND  (HTML + CSS + JS — all served from Python)
+#  FRONTEND HTML
 # ══════════════════════════════════════════════════════════
 
 HTML = r"""<!DOCTYPE html>
@@ -201,13 +202,11 @@ HTML = r"""<!DOCTYPE html>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
-  --bg:#f0f2f5;--white:#fff;--card:#fff;
-  --sb:#3949ab;--top:#3949ab;
+  --bg:#f0f2f5;--card:#fff;--sb:#3949ab;--top:#3949ab;
   --pri:#3949ab;--pri2:#303f9f;
   --gn:#2e7d32;--gn2:#e8f5e9;
   --rd:#c62828;--rd2:#ffebee;
-  --am:#e65100;--am2:#fff3e0;
-  --bl:#1565c0;--bl2:#e3f2fd;
+  --am:#e65100;--bl:#1565c0;--bl2:#e3f2fd;
   --tx:#212121;--t2:#555;--t3:#888;
   --br:#dde1e7;--ibg:#f8f9fb;--hov:#f1f3f8;--sel:#e8eaf6;
   --sw:210px;--sh:0 1px 4px rgba(0,0,0,.10),0 2px 12px rgba(0,0,0,.06);
@@ -279,8 +278,7 @@ tbody tr:hover td{background:var(--hov)}
 .sc{background:var(--card);border:1px solid var(--br);border-radius:12px;padding:18px 20px;display:flex;gap:14px;align-items:center;box-shadow:var(--sh);transition:transform .15s;border-left:4px solid transparent}
 .sc:hover{transform:translateY(-2px)}
 .s-bl{border-left-color:var(--pri)}.s-gn{border-left-color:#2e7d32}.s-am{border-left-color:#e65100}.s-cy{border-left-color:#0277bd}
-.s-ic{font-size:28px}
-.s-lb{font-size:11px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.4px}
+.s-ic{font-size:28px}.s-lb{font-size:11px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.4px}
 .s-vl{font-size:22px;font-weight:800;margin-top:3px}
 .s-bl .s-vl{color:var(--pri)}.s-gn .s-vl{color:#2e7d32}.s-am .s-vl{color:#e65100}.s-cy .s-vl{color:#0277bd}
 .crbox{margin-top:14px;background:var(--bl2);border:1px solid #bbdefb;border-radius:8px;padding:18px}
@@ -296,15 +294,13 @@ tbody tr:hover td{background:var(--hov)}
 .mok{color:var(--gn)}.mer{color:var(--rd)}
 .lst{font-size:12.5px;font-weight:600;margin-top:7px;min-height:16px}
 .lok{color:var(--gn)}.ler{color:var(--rd)}
-.ov{position:fixed;inset:0;background:rgba(0,0,0,.5);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;z-index:999;animation:fi .2s ease}
+.ov{position:fixed;inset:0;background:rgba(0,0,0,.5);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;z-index:999}
 .ov.off{display:none}
-.rmodal{background:#fff;border-radius:14px;padding:28px;width:90%;max-width:400px;box-shadow:0 20px 60px rgba(0,0,0,.25);animation:su .22s ease;font-family:'Courier New',monospace}
-@keyframes su{from{transform:translateY(16px);opacity:0}to{transform:translateY(0);opacity:1}}
+.rmodal{background:#fff;border-radius:14px;padding:28px;width:90%;max-width:400px;box-shadow:0 20px 60px rgba(0,0,0,.25);font-family:'Courier New',monospace}
 .rh{text-align:center;border-bottom:2px dashed #ddd;padding-bottom:14px;margin-bottom:13px}
 .rh h2{font-size:20px;font-weight:800;color:var(--pri)}
 .rh p{font-size:11px;color:var(--t3);margin-top:3px}
-.rc p{font-size:12.5px;color:var(--t2);margin:3px 0}.rc strong{color:var(--tx)}
-.rc{margin-bottom:12px}
+.rc p{font-size:12.5px;color:var(--t2);margin:3px 0}.rc strong{color:var(--tx)}.rc{margin-bottom:12px}
 .riw{border-top:1px dashed #ddd;padding-top:10px}
 .rir{display:flex;justify-content:space-between;font-size:12px;margin:4px 0;color:var(--t2)}
 .rir span:last-child{color:var(--tx);font-weight:600}
@@ -315,6 +311,11 @@ tbody tr:hover td{background:var(--hov)}
 .toast{background:#fff;border:1px solid var(--br);border-radius:8px;padding:11px 16px;font-size:13.5px;font-weight:500;color:var(--tx);box-shadow:0 4px 20px rgba(0,0,0,.12);display:flex;align-items:center;gap:8px;min-width:220px;animation:sir .2s ease}
 @keyframes sir{from{transform:translateX(36px);opacity:0}to{transform:translateX(0);opacity:1}}
 .tok{border-left:4px solid #2e7d32}.ter{border-left:4px solid #c62828}.tif{border-left:4px solid var(--pri)}
+/* DB ERROR BANNER */
+.db-err-banner{background:#fff3e0;border:2px solid #ff9800;border-radius:10px;padding:20px 24px;margin-bottom:20px;display:none}
+.db-err-banner.show{display:block}
+.db-err-title{font-size:16px;font-weight:700;color:#e65100;margin-bottom:8px}
+.db-err-msg{font-size:13px;color:#555;font-family:'Courier New',monospace;background:#fff;padding:10px;border-radius:6px;margin-top:8px;word-break:break-all}
 .hidden{display:none!important}
 .mt12{margin-top:12px}.mt16{margin-top:16px}
 .sep{border:none;border-top:1px solid var(--br);margin:14px 0}
@@ -339,6 +340,19 @@ tbody tr:hover td{background:var(--hov)}
 <div class="main">
   <div class="topbar"><span class="tb-t" id="tbt">Create New Bill</span><span class="tb-r">Billing System Pro</span></div>
   <div class="content">
+
+    <!-- DB ERROR BANNER — shows if database not connected -->
+    <div class="db-err-banner" id="dbBanner">
+      <div class="db-err-title">⚠️ Database Not Connected</div>
+      <div>The app cannot connect to the database. Please check:</div>
+      <ul style="margin:8px 0 0 18px;font-size:13px;color:#555">
+        <li>You created a <strong>PostgreSQL</strong> database on Render</li>
+        <li>You added <strong>DATABASE_URL</strong> in Environment Variables</li>
+        <li>The DATABASE_URL value is the <strong>Internal Database URL</strong></li>
+        <li>You redeployed after adding the variable</li>
+      </ul>
+      <div class="db-err-msg" id="dbErrMsg"></div>
+    </div>
 
     <!-- NEW BILL -->
     <div class="pg on" id="pg-bill">
@@ -493,7 +507,6 @@ tbody tr:hover td{background:var(--hov)}
   </div>
 </div>
 
-<!-- RECEIPT -->
 <div class="ov off" id="ov" onclick="if(event.target.id==='ov')closeR()">
   <div class="rmodal">
     <div class="rh"><h2>Billing System Pro</h2><p id="rDt"></p><p>Bill No: <strong id="rNo"></strong></p></div>
@@ -531,12 +544,11 @@ function api(method,path,body){
   return fetch(path,opts).then(function(r){
     var ct=r.headers.get('content-type')||'';
     if(ct.indexOf('application/json')<0){
-      return r.text().then(function(txt){throw new Error('Server error — not JSON. Check server logs.');});
+      return r.text().then(function(txt){
+        throw new Error('Server returned HTML instead of JSON. Database may not be connected. Check Render environment variables.');
+      });
     }
-    return r.json().then(function(d){
-      if(!r.ok)throw new Error(d.error||'Error '+r.status);
-      return d;
-    });
+    return r.json().then(function(d){if(!r.ok)throw new Error(d.error||'Error '+r.status);return d;});
   });
 }
 
@@ -546,7 +558,7 @@ function toast(msg,t){
   el.className='toast t'+(t==='ok'?'ok':t==='er'?'er':'if');
   el.innerHTML='<span>'+(ic[t]||'ℹ️')+'</span><span>'+esc(msg)+'</span>';
   var tc=document.getElementById('tc');if(tc)tc.appendChild(el);
-  setTimeout(function(){try{el.remove()}catch(e){}},3500);
+  setTimeout(function(){try{el.remove()}catch(e){}},4000);
 }
 
 function ek(e,n){if(e.key==='Enter'){var el=document.getElementById(n);if(el)el.focus();}}
@@ -558,6 +570,18 @@ function sl(msg,t){var el=document.getElementById('lst');if(!el)return;el.textCo
 function fm(n){return '₹'+parseFloat(n||0).toFixed(2);}
 function esc(s){var d=document.createElement('div');d.textContent=String(s);return d.innerHTML;}
 function fd(s){if(!s)return '—';try{return new Date(s).toLocaleString('en-IN',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});}catch(e){return s;}}
+
+// Check DB status on load and show banner if not connected
+function checkDB(){
+  api('GET','/api/db-status').then(function(r){
+    var banner=document.getElementById('dbBanner');
+    if(!r.ok){
+      if(banner){banner.classList.add('show');var em=document.getElementById('dbErrMsg');if(em)em.textContent=r.error||'Unknown error';}
+    } else {
+      if(banner)banner.classList.remove('show');
+    }
+  }).catch(function(){});
+}
 
 function loadNextId(){
   api('GET','/api/bills/next-id').then(function(r){sv('billNo',String(r.next_id).padStart(3,'0'));}).catch(function(){sv('billNo','???');});
@@ -598,9 +622,7 @@ function renderBI(){
   if(!BI.length){tb.innerHTML='<tr><td colspan="7" class="etd">No items added</td></tr>';document.getElementById('bsub').textContent='₹0.00';document.getElementById('btot').textContent='₹0.00';return;}
   var tot=0,html='';
   BI.forEach(function(it,i){tot+=it.subtotal;html+='<tr><td>'+(i+1)+'</td><td><strong>'+esc(it.name)+'</strong> <span class="bpill">'+esc(it.code)+'</span></td><td>'+it.quantity+'</td><td>'+fm(it.price)+'</td><td>—</td><td><strong>'+fm(it.subtotal)+'</strong></td><td><button class="delbtn" onclick="remItem('+i+')">Remove</button></td></tr>';});
-  tb.innerHTML=html;
-  document.getElementById('bsub').textContent=fm(tot);
-  document.getElementById('btot').textContent=fm(tot);
+  tb.innerHTML=html;document.getElementById('bsub').textContent=fm(tot);document.getElementById('btot').textContent=fm(tot);
 }
 
 function submitBill(){
@@ -634,7 +656,7 @@ function addProd(){
   .catch(function(e){sm('pmsg','✘ '+e.message,'er');});
 }
 
-function delProd(code){if(!confirm('Delete product "'+code+'"?'))return;api('DELETE','/api/products/'+encodeURIComponent(code)).then(function(){loadStock();toast('Product deleted','info');}).catch(function(e){toast(e.message,'er');});}
+function delProd(code){if(!confirm('Delete product "'+code+'"?'))return;api('DELETE','/api/products/'+encodeURIComponent(code)).then(function(){loadStock();toast('Deleted','info');}).catch(function(e){toast(e.message,'er');});}
 
 function loadStock(){
   var tb=document.getElementById('stb');if(!tb)return;
@@ -652,7 +674,7 @@ function lookCust(){
   if(!ph||ph.length!==10){toast('Enter valid 10-digit phone','er');return;}
   api('GET','/api/customers/lookup?phone='+encodeURIComponent(ph)).then(function(b){
     var ih=(b.items||[]).map(function(it){return esc(it.product_code)+' | '+esc(it.product_name)+' × '+it.quantity+' = '+fm(it.subtotal);}).join('<br/>');
-    var note=b.total_count>1?'<div style="font-size:11.5px;color:#888;margin-top:8px">📌 This customer has '+b.total_count+' bill(s).</div>':'';
+    var note=b.total_count>1?'<div style="font-size:11.5px;color:#888;margin-top:8px">📌 '+b.total_count+' total bills for this customer.</div>':'';
     if(box){box.innerHTML='<div class="crbox"><div class="crtitle">📋 Last Bill — #'+String(b.id).padStart(3,'0')+'</div><div class="crgrid"><div><div class="crl">Customer</div><div class="crv">'+esc(b.customer_name)+'</div></div><div><div class="crl">Phone</div><div class="crv">'+esc(b.customer_phone)+'</div></div><div><div class="crl">Date</div><div class="crv">'+fd(b.bill_date)+'</div></div><div><div class="crl">Amount</div><div class="crv" style="color:#1565c0">'+fm(b.total_amount)+'</div></div><div><div class="crl">Pieces</div><div class="crv">'+b.total_pieces+'</div></div><div><div class="crl">Worker</div><div class="crv">'+(b.worker_number?esc(b.worker_number)+' — '+esc(b.worker_name):'N/A')+'</div></div></div><div class="cribox"><strong>Items:</strong><br/>'+ih+'</div>'+note+'</div>';box.classList.remove('hidden');}
   }).catch(function(e){if(box){box.innerHTML='<div class="crbox"><div style="color:#c62828;font-weight:600">✘ '+esc(e.message)+'</div></div>';box.classList.remove('hidden');}});
 }
@@ -663,9 +685,7 @@ function addWorker(){
   if(!name){sm('wmsg','✘ Worker name is required','er');return;}
   api('POST','/api/workers',{number:num,name:name}).then(function(r){sm('wmsg','✔ Worker "'+name+'" added!','ok');cv(['wNum','wNam']);document.getElementById('wNum').focus();loadInc();toast('Worker added','ok');}).catch(function(e){sm('wmsg','✘ '+e.message,'er');});
 }
-
-function delWorker(num){if(!confirm('Delete worker #'+num+'?'))return;api('DELETE','/api/workers/'+encodeURIComponent(num)).then(function(){loadInc();toast('Worker deleted','info');}).catch(function(e){toast(e.message,'er');});}
-
+function delWorker(num){if(!confirm('Delete worker #'+num+'?'))return;api('DELETE','/api/workers/'+encodeURIComponent(num)).then(function(){loadInc();toast('Deleted','info');}).catch(function(e){toast(e.message,'er');});}
 function loadInc(){
   var tb=document.getElementById('inctb');if(!tb)return;
   tb.innerHTML='<tr><td colspan="6" class="etd">Loading...</td></tr>';
@@ -678,14 +698,12 @@ function loadInc(){
 function chkSup(){api('GET','/api/sup/status').then(function(r){if(r.logged_in)showPnl(r.username);else showFrm();}).catch(function(){showFrm();});}
 function showPnl(who){var f=document.getElementById('supfrm'),p=document.getElementById('suppnl'),w=document.getElementById('supwho');if(f)f.classList.add('hidden');if(p)p.classList.remove('hidden');if(w)w.textContent=who;}
 function showFrm(){var f=document.getElementById('supfrm'),p=document.getElementById('suppnl');if(f)f.classList.remove('hidden');if(p)p.classList.add('hidden');}
-
 function supLogin(){
   var u=gv('sU'),p=gv('sP');
   if(!u||!p){sm('smsg','✘ Enter both username and password','er');return;}
   api('POST','/api/sup/login',{username:u,password:p}).then(function(r){showPnl(r.username);sm('smsg','','');cv(['sU','sP']);toast('Supervisor logged in','ok');}).catch(function(e){sm('smsg','✘ '+e.message,'er');toast(e.message,'er');});
 }
 function supOut(){api('POST','/api/sup/logout').then(function(){showFrm();cv(['sU','sP']);toast('Logged out','info');}).catch(function(){showFrm();});}
-
 function clrInc(){
   if(!confirm('⚠ MONTH-END CLEAR\n\nRemove all worker incentives?\n\nCannot be undone!'))return;
   api('POST','/api/incentives/clear').then(function(r){toast(r.message,'ok');loadInc();}).catch(function(e){toast(e.message,'er');});
@@ -696,7 +714,6 @@ function supEdit(){
   if(isNaN(adj)||adj===0){sm('semsg','✘ Enter a non-zero number','er');return;}
   api('POST','/api/incentives/adjust',{worker_number:wn,adjustment:adj,note:note}).then(function(r){sm('semsg','✔ '+r.message,'ok');cv(['sEW','sEA','sEN']);loadInc();toast(r.message,'ok');}).catch(function(e){sm('semsg','✘ '+e.message,'er');});
 }
-
 function loadRep(){
   ['rS','rB','rC','rI'].forEach(function(id){var el=document.getElementById(id);if(el)el.textContent='...';});
   api('GET','/api/reports').then(function(d){
@@ -709,6 +726,7 @@ function loadRep(){
   }).catch(function(e){['rS','rB','rC','rI'].forEach(function(id){var el=document.getElementById(id);if(el)el.textContent='ERR';});toast('Reports error: '+e.message,'er');});
 }
 
+checkDB();
 loadNextId();
 </script>
 </body>
@@ -720,12 +738,22 @@ def index():
     return Response(HTML, mimetype='text/html')
 
 
+# ── DB STATUS CHECK (called on page load to show banner if broken) ──
+@app.route('/api/db-status', methods=['GET'])
+def db_status():
+    if not DB_READY:
+        return jsonify({'ok': False, 'error': DB_ERROR})
+    return jsonify({'ok': True})
+
+
 # ══════════════════════════════════════════════════════════
-#  API  ROUTES
+#  ALL API ROUTES
 # ══════════════════════════════════════════════════════════
 
 @app.route('/api/sup/login', methods=['POST'])
 def sup_login():
+    err = db_check()
+    if err: return err
     d = jdata()
     u = str(d.get('username','') or '').strip()
     p = str(d.get('password','') or '').strip()
@@ -750,16 +778,22 @@ def sup_status():
 
 @app.route('/api/products', methods=['GET'])
 def get_products():
+    err = db_check()
+    if err: return err
     return jsonify(qall("SELECT * FROM products ORDER BY code"))
 
 @app.route('/api/products/<code>', methods=['GET'])
 def get_product(code):
+    err = db_check()
+    if err: return err
     p = qone("SELECT * FROM products WHERE code=%s", (code.strip(),))
     if p: return jsonify(p)
     return jerr('Product not found', 404)
 
 @app.route('/api/products', methods=['POST'])
 def add_product():
+    err = db_check()
+    if err: return err
     d     = jdata()
     code  = str(d.get('code','')  or '').strip()
     name  = str(d.get('name','')  or '').strip()
@@ -783,22 +817,30 @@ def add_product():
 
 @app.route('/api/products/<code>', methods=['DELETE'])
 def del_product(code):
+    err = db_check()
+    if err: return err
     run("DELETE FROM products WHERE code=%s", (code,))
     return jok()
 
 
 @app.route('/api/workers', methods=['GET'])
 def get_workers():
+    err = db_check()
+    if err: return err
     return jsonify(qall("SELECT * FROM workers ORDER BY number"))
 
 @app.route('/api/workers/<number>', methods=['GET'])
 def get_worker(number):
+    err = db_check()
+    if err: return err
     w = qone("SELECT * FROM workers WHERE number=%s", (number.strip(),))
     if w: return jsonify(w)
     return jerr('Worker not found', 404)
 
 @app.route('/api/workers', methods=['POST'])
 def add_worker():
+    err = db_check()
+    if err: return err
     d    = jdata()
     num  = str(d.get('number','') or '').strip()
     name = str(d.get('name','')   or '').strip()
@@ -813,17 +855,23 @@ def add_worker():
 
 @app.route('/api/workers/<number>', methods=['DELETE'])
 def del_worker(number):
+    err = db_check()
+    if err: return err
     run("DELETE FROM workers WHERE number=%s", (number,))
     return jok()
 
 
 @app.route('/api/bills/next-id', methods=['GET'])
 def next_id():
+    err = db_check()
+    if err: return err
     r = qone("SELECT COALESCE(MAX(id),0) AS m FROM bills")
     return jsonify({'next_id': r['m'] + 1})
 
 @app.route('/api/bills', methods=['POST'])
 def create_bill():
+    err = db_check()
+    if err: return err
     d      = jdata()
     cname  = str(d.get('customer_name','')  or '').strip()
     cphone = str(d.get('customer_phone','') or '').strip()
@@ -861,8 +909,11 @@ def create_bill():
     return jok(bill_id=bid, total=total_a, pieces=total_p)
 
 
+    
 @app.route('/api/customers/lookup', methods=['GET'])
 def lookup_cust():
+    err = db_check()
+    if err: return err
     ph = (request.args.get('phone') or '').strip()
     if not ph: return jerr('Phone required')
     b = qone("SELECT * FROM bills WHERE customer_phone=%s ORDER BY id DESC LIMIT 1", (ph,))
@@ -874,6 +925,8 @@ def lookup_cust():
 
 @app.route('/api/incentives', methods=['GET'])
 def get_incentives():
+    err = db_check()
+    if err: return err
     workers = qall("SELECT * FROM workers ORDER BY number")
     out = []
     for w in workers:
@@ -883,10 +936,11 @@ def get_incentives():
         out.append({'number':w['number'],'name':w['name'],'pieces':p,'bills':bd['cnt'],'incentive':p})
     return jsonify(out)
 
-
 @app.route('/api/incentives/adjust', methods=['POST'])
 @need_sup
 def adj_inc():
+    err = db_check()
+    if err: return err
     d    = jdata()
     wnum = str(d.get('worker_number','') or '').strip()
     note = str(d.get('note','') or '').strip()
@@ -901,9 +955,12 @@ def adj_inc():
     conn.commit(); conn.close()
     return jok(message=f'Adjusted {adj:+d} pieces for worker {wnum}')
 
+
 @app.route('/api/incentives/clear', methods=['POST'])
 @need_sup
 def clr_inc():
+    err = db_check()
+    if err: return err
     conn = get_db(); cur = conn.cursor()
     cur.execute("UPDATE bills SET worker_number='',worker_name=''")
     cur.execute("DELETE FROM adjustments")
@@ -913,12 +970,14 @@ def clr_inc():
 
 @app.route('/api/reports', methods=['GET'])
 def get_reports():
+    err = db_check()
+    if err: return err
     sales  = qone("SELECT COALESCE(SUM(total_amount),0) AS v FROM bills")['v']
     nbills = qone("SELECT COUNT(*) AS v FROM bills")['v']
     ncusts = qone("SELECT COUNT(DISTINCT customer_phone) AS v FROM bills")['v']
     rows   = qall("SELECT COALESCE(SUM(b.total_pieces),0)+COALESCE(a.adj,0) AS inc FROM workers w LEFT JOIN bills b ON b.worker_number=w.number LEFT JOIN (SELECT worker_number,SUM(pieces) AS adj FROM adjustments GROUP BY worker_number) a ON a.worker_number=w.number GROUP BY w.number")
     tinc   = sum(int(r['inc'] or 0) for r in rows)
-    recent = qall("SELECT b.id,b.bill_date,b.customer_name,b.customer_phone,b.total_amount,b.worker_number,(SELECT COUNT(*) FROM bill_items WHERE bill_id=b.id) AS items FROM bills b ORDER BY b.id DESC LIMIT 15")
+    recent = qall("SELECT b.id,b.bill_date,b.customer_name,b.customer_phone,b.total_amount,b.worker_number FROM bills b ORDER BY b.id DESC LIMIT 15")
     top    = qall("SELECT product_name,SUM(quantity) AS units,SUM(subtotal) AS revenue FROM bill_items GROUP BY product_name ORDER BY units DESC LIMIT 10")
     return jsonify({'total_sales':float(sales),'total_bills':nbills,'total_customers':ncusts,'total_incentives':tinc,'recent_bills':recent,'top_products':top})
 
