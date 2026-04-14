@@ -975,7 +975,7 @@ def get_reports():
     sales  = qone("SELECT COALESCE(SUM(total_amount),0) AS v FROM bills")['v']
     nbills = qone("SELECT COUNT(*) AS v FROM bills")['v']
     ncusts = qone("SELECT COUNT(DISTINCT customer_phone) AS v FROM bills")['v']
-    rows   = qall("SELECT COALESCE(SUM(b.total_pieces),0)+COALESCE(a.adj,0) AS inc FROM workers w LEFT JOIN bills b ON b.worker_number=w.number LEFT JOIN (SELECT worker_number,SUM(pieces) AS adj FROM adjustments GROUP BY worker_number) a ON a.worker_number=w.number GROUP BY w.number")
+    rows = qall("SELECT COALESCE(SUM(b.total_pieces),0) AS inc FROM workers w LEFT JOIN bills b ON b.worker_number=w.number GROUP BY w.number")
     tinc   = sum(int(r['inc'] or 0) for r in rows)
     recent = qall("SELECT b.id,b.bill_date,b.customer_name,b.customer_phone,b.total_amount,b.worker_number FROM bills b ORDER BY b.id DESC LIMIT 15")
     top    = qall("SELECT product_name,SUM(quantity) AS units,SUM(subtotal) AS revenue FROM bill_items GROUP BY product_name ORDER BY units DESC LIMIT 10")
