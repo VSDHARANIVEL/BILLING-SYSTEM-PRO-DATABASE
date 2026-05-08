@@ -410,7 +410,7 @@ tbody tr:hover td{background:var(--hov)}
         <div class="fr">
           <div class="fg" style="max-width:165px"><label>Product Code (3 digits)</label><input id="pCode" type="text" maxlength="3" placeholder="e.g. 100" onkeydown="ek(event,'pName')"/></div>
           <div class="fg" style="flex:2"><label>Product Name</label><input id="pName" type="text" placeholder="Shirt, Pant..." onkeydown="ek(event,'pPrice')"/></div>
-          <div class="fg"><label>Price (₹)</label><input id="pPrice" type="number" placeholder="600" min="0" step="0.01" onkeydown="ek(event,'pStock')"/></div>
+          <div class="fg"><label>Price (₹)</label><input id="pPrice" type="number" placeholder="100" min="0" step="0.01" onkeydown="ek(event,'pStock')"/></div>
           <div class="fg"><label>Stock Quantity</label><input id="pStock" type="number" placeholder="100" min="0" onkeydown="if(event.key==='Enter')addProd()"/></div>
           <div class="fg" style="align-self:flex-end;max-width:155px"><button class="btn bp" onclick="addProd()">📦 Add Product</button></div>
         </div>
