@@ -470,7 +470,7 @@ tbody tr:hover td{background:var(--hov)}
         <div class="ctitle">Add New Worker</div>
         <div class="fr">
           <div class="fg" style="max-width:200px"><label>Worker Number</label><input id="wNum" type="text" placeholder="e.g. 01" onkeydown="ek(event,'wNam')"/></div>
-          <div class="fg"><label>Worker Name</label><input id="wNam" type="text" placeholder="e.g. RAJ" onkeydown="if(event.key==='Enter')addWorker()"/></div>
+          <div class="fg"><label>Worker Name</label><input id="wNam" type="text" placeholder="e.g. ABC" onkeydown="if(event.key==='Enter')addWorker()"/></div>
           <div class="fg" style="align-self:flex-end;max-width:155px"><button class="btn bp" onclick="addWorker()">➕ Add Worker</button></div>
         </div>
         <div class="msg" id="wmsg"></div>
